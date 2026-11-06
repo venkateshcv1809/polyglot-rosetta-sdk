@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnp.*
+
+# Build output
+dist/
+build/
+lib/
+out/
+
+# Test and coverage output
+coverage/
+.nyc_output/
+*.lcov
+
+# Package manager files
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+.yarn/build-state.yml
+
+# Caches and generated metadata
+.cache/
+.parcel-cache/
+.rollup.cache/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# Logs and diagnostic reports
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+report.*.json
+
+# Local environment files (keep the example template)
+.env
+.env.*
+!.env.example
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

@@ -1,0 +1,10 @@
+[tools]
+node = "24"
+yarn = "4.18.1"
+just = "latest"
+
+[settings]
+idiomatic_version_file_enable_tools = ["yarn"] 
+
+[env]
+_.path = ["./node_modules/.bin"]

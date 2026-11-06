@@ -1,0 +1,34 @@
+{
+  "name": "prosetta-sdk",
+  "version": "0.1.0",
+  "description": "JavaScript SDK wrapper for the Polyglot Rosetta WebAssembly runtime.",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "./dist/prosetta-sdk.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/prosetta-sdk.js",
+      "require": "./dist/prosetta-sdk.js",
+      "default": "./dist/prosetta-sdk.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "packageManager": "yarn@4.18.1",
+  "scripts": {
+    "build": "tsdown && tsc --project tsconfig.types.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "check": "tsc --noEmit --project tsconfig.json",
+    "prepack": "yarn build"
+  },
+  "devDependencies": {
+    "tsdown": "^0.23.5",
+    "typescript": "^5.9.3"
+  }
+}

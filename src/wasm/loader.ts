@@ -2,7 +2,7 @@ import { getConfig } from '../config/index';
 import {
   NODE_WASM_LOADER_REQUIRED_ERROR,
   WASM_PATH_REQUIRED_ERROR,
-} from '../config/constants.js';
+} from '../config/constants';
 
 type NodeRuntime = {
   getBuiltinModule?: (name: string) => unknown;
@@ -50,10 +50,22 @@ export function unloadWasm(): void {
 }
 
 async function compileWasm(): Promise<WebAssembly.Module> {
-  const { wasmPath } = getConfig();
+  const { PROSETTA_WASM_PATH: wasmPath } = getConfig();
 
   if (!wasmPath) {
     throw new Error(WASM_PATH_REQUIRED_ERROR);
+  }
+
+  if (isHttpUrl(wasmPath)) {
+    const response = await fetch(wasmPath);
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to download WASM from ${wasmPath}: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    return WebAssembly.compile(await response.arrayBuffer());
   }
 
   const nodeProcess = (globalThis as typeof globalThis & { process?: NodeRuntime }).process;
@@ -68,4 +80,8 @@ async function compileWasm(): Promise<WebAssembly.Module> {
 
   const wasmBytes = await fs.promises.readFile(wasmPath);
   return WebAssembly.compile(wasmBytes as BufferSource);
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
 }

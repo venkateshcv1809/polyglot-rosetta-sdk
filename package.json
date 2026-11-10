@@ -1,6 +1,6 @@
 {
   "name": "prosetta-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "JavaScript SDK wrapper for the Polyglot Rosetta WebAssembly runtime.",
   "license": "MIT",
   "type": "commonjs",

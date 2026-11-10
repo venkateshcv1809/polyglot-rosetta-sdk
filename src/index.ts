@@ -1,3 +1,9 @@
-export function init(): void {
-  console.info('Welcome to Prosetta SDK!');
+import { loadWasm, unloadWasm } from './wasm/index';
+
+export function init(): Promise<WebAssembly.Module> {
+  return loadWasm();
+}
+
+export function shutdown(): void {
+  unloadWasm();
 }

@@ -1,31 +1,41 @@
 {
   "name": "prosetta-sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "JavaScript SDK wrapper for the Polyglot Rosetta WebAssembly runtime.",
   "license": "MIT",
   "type": "commonjs",
-  "main": "./dist/prosetta-sdk.js",
-  "types": "./dist/types/index.d.ts",
+  "main": "./dist/npm/index.cjs",
+  "module": "./dist/npm/index.mjs",
+  "types": "./dist/npm/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/prosetta-sdk.js",
-      "require": "./dist/prosetta-sdk.js",
-      "default": "./dist/prosetta-sdk.js"
+      "types": "./dist/npm/index.d.mts",
+      "import": {
+        "types": "./dist/npm/index.d.mts",
+        "default": "./dist/npm/index.mjs"
+      },
+      "require": {
+        "types": "./dist/npm/index.d.cts",
+        "default": "./dist/npm/index.cjs"
+      },
+      "default": "./dist/npm/index.mjs"
     }
   },
   "files": [
-    "dist",
+    "dist/npm",
+    "dist/prosetta-sdk.js",
+    "dist/prosetta-sdk.js.map",
     "LICENSE",
     "README.md"
   ],
   "sideEffects": false,
   "packageManager": "yarn@4.18.1",
   "scripts": {
-    "build": "tsdown && tsc --project tsconfig.types.json",
+    "build": "yarn build:dev",
+    "build:dev": "mise exec -- yarn clean && mise exec -- tsdown",
+    "build:prod": "mise exec -- yarn clean && mise exec -- tsdown --config tsdown.prod.config.mts && npm pack --cache ./.cache/npm --pack-destination dist && node -e \"require('node:fs').rmSync('dist/npm', { recursive: true, force: true })\"",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "check": "tsc --noEmit --project tsconfig.json",
-    "prepack": "yarn build"
+    "check": "tsc --noEmit --project tsconfig.json"
   },
   "devDependencies": {
     "tsdown": "^0.23.5",

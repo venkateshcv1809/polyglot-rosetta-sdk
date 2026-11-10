@@ -7,7 +7,10 @@ install:
   yarn install
 
 build:
-  yarn build
+  yarn build:dev
+
+build-prod:
+  yarn build:prod
 
 check:
   yarn check

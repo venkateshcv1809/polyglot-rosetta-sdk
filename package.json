@@ -32,8 +32,8 @@
   "packageManager": "yarn@4.18.1",
   "scripts": {
     "build": "yarn build:dev",
-    "build:dev": "yarn clean && tsdown",
-    "build:prod": "yarn clean && tsdown --config tsdown.prod.config.mts && npm pack --cache ./.cache/npm --pack-destination dist && node -e \"require('node:fs').rmSync('dist/npm', { recursive: true, force: true })\"",
+    "build:dev": "mise exec -- yarn clean && mise exec -- tsdown",
+    "build:prod": "mise exec -- yarn clean && mise exec -- tsdown --config tsdown.prod.config.mts && npm pack --cache ./.cache/npm --pack-destination dist && node -e \"require('node:fs').rmSync('dist/npm', { recursive: true, force: true })\"",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "check": "tsc --noEmit --project tsconfig.json"
   },

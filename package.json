@@ -1,6 +1,6 @@
 {
   "name": "@venkateshcv1809/prosetta-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "JavaScript SDK wrapper for the Polyglot Rosetta WebAssembly runtime.",
   "license": "MIT",
   "repository": {

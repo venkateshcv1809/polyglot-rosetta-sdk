@@ -1,8 +1,15 @@
 {
-  "name": "prosetta-sdk",
+  "name": "@venkateshcv1809/prosetta-sdk",
   "version": "0.2.0",
   "description": "JavaScript SDK wrapper for the Polyglot Rosetta WebAssembly runtime.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/venkateshcv1809/polyglot-rosetta-sdk.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "commonjs",
   "main": "./dist/npm/index.cjs",
   "module": "./dist/npm/index.mjs",

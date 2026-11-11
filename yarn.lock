@@ -257,9 +257,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"prosetta-sdk@workspace:.":
+"@venkateshcv1809/prosetta-sdk@workspace:.":
   version: 0.0.0-use.local
-  resolution: "prosetta-sdk@workspace:."
+  resolution: "@venkateshcv1809/prosetta-sdk@workspace:."
   dependencies:
     tsdown: "npm:^0.23.5"
     typescript: "npm:^5.9.3"

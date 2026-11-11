@@ -1,0 +1,87 @@
+name: Publish SDK release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Ensure release commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Release tag $GITHUB_REF_NAME must point to a commit in main's history" >&2
+            exit 1
+          fi
+
+      - name: Install project tools
+        uses: jdx/mise-action@v4
+        with:
+          version: 2026.10.25
+          install_args: --locked node yarn
+          cache: false
+
+      - name: Install dependencies
+        run: mise exec -- yarn install --immutable
+
+      - name: Check release tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          tag_version="${RELEASE_TAG#v}"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Release tag $RELEASE_TAG does not match package version $package_version" >&2
+            exit 1
+          fi
+
+      - name: Type-check
+        run: mise exec -- yarn check
+
+      - name: Build production bundle and package
+        run: mise exec -- yarn build:prod
+
+      - name: Attach bundle and npm tarball to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/prosetta-sdk.js dist/*.tgz --clobber
+
+      - name: Configure npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}
+        run: npm publish dist/*.tgz --access public --tag "$RELEASE_CHANNEL"
+
+      - name: Configure GitHub Packages registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: '@venkateshcv1809'
+
+      - name: Publish to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}
+        run: npm publish dist/*.tgz --registry=https://npm.pkg.github.com --tag "$RELEASE_CHANNEL"

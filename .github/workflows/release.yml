@@ -11,13 +11,27 @@ permissions:
   packages: write
 
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: sdk-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+          fetch-depth: 0
+
+      - name: Ensure release commit is on main
+        if: github.event_name == 'release'
+        run: |
+          if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
+            echo "Release tag $GITHUB_REF_NAME must point to a commit in main's history" >&2
+            exit 1
+          fi
+
       - name: Install project tools
         uses: jdx/mise-action@v4
         with:
@@ -26,32 +40,68 @@ jobs:
           cache: false
 
       - name: Install dependencies
-        run: mise exec -- yarn install --immutable
+        run: mise exec -- corepack yarn install --immutable
+
+      - name: Verify Yarn version
+        run: |
+          yarn_version="$(mise exec -- corepack yarn --version)"
+          if [ "$yarn_version" != "4.18.1" ]; then
+            echo "Expected Yarn 4.18.1, got $yarn_version" >&2
+            exit 1
+          fi
+
+      - name: Configure build environment
+        run: cp .env.example .env
+
+      - name: Check release tag matches package version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          tag_version="${RELEASE_TAG#v}"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Release tag $RELEASE_TAG does not match package version $package_version" >&2
+            exit 1
+          fi
 
       - name: Type-check
-        run: mise exec -- yarn check
+        run: mise exec -- corepack yarn check
 
       - name: Build production bundle and package
-        run: mise exec -- yarn build:prod
+        run: mise exec -- corepack yarn build:prod
+
+      - name: Upload develop build artifacts
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.sha }}
+          path: |
+            dist/prosetta-sdk.js
+            dist/*.tgz
 
       - name: Attach bundle and npm tarball to release
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" dist/prosetta-sdk.js dist/*.tgz --clobber
 
       - name: Configure npm registry
+        if: github.event_name == 'release'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish to npm
+        if: github.event_name == 'release'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}
         run: npm publish dist/*.tgz --access public --tag "$RELEASE_CHANNEL"
 
       - name: Configure GitHub Packages registry
+        if: github.event_name == 'release'
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -59,6 +109,7 @@ jobs:
           scope: '@venkateshcv1809'
 
       - name: Publish to GitHub Packages
+        if: github.event_name == 'release'
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
           RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}

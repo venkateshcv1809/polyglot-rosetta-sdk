@@ -1,6 +1,8 @@
-name: Publish SDK release
+name: Build and release SDK
 
 on:
+  push:
+    branches: [develop]
   release:
     types: [published]
 
@@ -33,7 +35,7 @@ jobs:
         uses: jdx/mise-action@v4
         with:
           version: 2026.10.25
-          install_args: --locked node yarn
+          install_args: node yarn
           cache: false
 
       - name: Install dependencies

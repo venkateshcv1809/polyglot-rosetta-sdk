@@ -133,6 +133,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@venkateshcv1809/prosetta-sdk@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@venkateshcv1809/prosetta-sdk@workspace:."
+  dependencies:
+    tsdown: "npm:^0.23.5"
+    typescript: "npm:^5.9.3"
+  languageName: unknown
+  linkType: soft
+
 "@yuku-toolchain/darwin-arm64@npm:0.25.0":
   version: 0.25.0
   resolution: "@yuku-toolchain/darwin-arm64@npm:0.25.0"
@@ -256,15 +265,6 @@ __metadata:
   checksum: 10c0/beb6ae02c43ae44e84883b90830196d9046b1726ead292adcf7f57945e0bb0d992d68563d87e03b484b6f3c9a5c6defda7523477f047d7f0e663f126cc01787f
   languageName: node
   linkType: hard
-
-"@venkateshcv1809/prosetta-sdk@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "@venkateshcv1809/prosetta-sdk@workspace:."
-  dependencies:
-    tsdown: "npm:^0.23.5"
-    typescript: "npm:^5.9.3"
-  languageName: unknown
-  linkType: soft
 
 "quansync@npm:^1.0.0":
   version: 1.0.0

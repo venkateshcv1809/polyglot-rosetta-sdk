@@ -64,6 +64,14 @@ jobs:
             exit 1
           fi
 
+      - name: Set develop package version
+        if: github.event_name == 'push'
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          develop_version="${package_version}-develop.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          npm pkg set "version=$develop_version"
+          echo "Publishing develop package version $develop_version"
+
       - name: Type-check
         run: mise exec -- corepack yarn check
 
@@ -86,21 +94,21 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" dist/prosetta-sdk.js dist/*.tgz --clobber
 
       - name: Configure npm registry
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'push'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Publish to npm
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'push'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}
-        run: npm publish dist/*.tgz --access public --tag "$RELEASE_CHANNEL"
+          PUBLISH_TAG: ${{ github.event_name == 'release' && github.event.release.prerelease && 'next' || github.event_name == 'release' && 'latest' || 'develop' }}
+        run: npm publish dist/*.tgz --access public --tag "$PUBLISH_TAG"
 
       - name: Configure GitHub Packages registry
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'push'
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -108,8 +116,8 @@ jobs:
           scope: '@venkateshcv1809'
 
       - name: Publish to GitHub Packages
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event_name == 'push'
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
-          RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}
-        run: npm publish dist/*.tgz --registry=https://npm.pkg.github.com --tag "$RELEASE_CHANNEL"
+          PUBLISH_TAG: ${{ github.event_name == 'release' && github.event.release.prerelease && 'next' || github.event_name == 'release' && 'latest' || 'develop' }}
+        run: npm publish dist/*.tgz --registry=https://npm.pkg.github.com --tag "$PUBLISH_TAG"

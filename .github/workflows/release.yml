@@ -1,31 +1,30 @@
-name: Build and release SDK
+name: Release SDK
 
 on:
-  push:
-    branches: [develop]
   release:
     types: [published]
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
-  group: sdk-${{ github.ref }}
+  group: sdk-release-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  build:
+    name: Validate and build
     runs-on: ubuntu-latest
+    env:
+      PROSETTA_WASM_PATH: ${{ vars.PROSETTA_WASM_PATH }}
     steps:
       - name: Check out release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+          ref: ${{ github.event.release.tag_name }}
           fetch-depth: 0
 
       - name: Ensure release commit is on main
-        if: github.event_name == 'release'
         run: |
           if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
             echo "Release tag $GITHUB_REF_NAME must point to a commit in main's history" >&2
@@ -38,22 +37,7 @@ jobs:
           version: 2026.11.7
           cache: false
 
-      - name: Install dependencies
-        run: mise exec -- corepack yarn install --immutable
-
-      - name: Verify Yarn version
-        run: |
-          yarn_version="$(mise exec -- corepack yarn --version)"
-          if [ "$yarn_version" != "4.18.1" ]; then
-            echo "Expected Yarn 4.18.1, got $yarn_version" >&2
-            exit 1
-          fi
-
-      - name: Configure build environment
-        run: cp .env.example .env
-
       - name: Check release tag matches package version
-        if: github.event_name == 'release'
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -64,69 +48,97 @@ jobs:
             exit 1
           fi
 
-      - name: Set develop package version
-        if: github.event_name == 'push'
+      - name: Install dependencies
+        run: mise exec -- just install-ci
+
+      - name: Check WASM path configuration
         run: |
-          package_version="$(node -p "require('./package.json').version")"
-          develop_version="${package_version}-develop.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
-          npm pkg set "version=$develop_version"
-          echo "Publishing develop package version $develop_version"
-
-      - name: Type-check
-        run: mise exec -- corepack yarn check
-
-      - name: Build production bundle and package
-        run: mise exec -- corepack yarn build:prod
-
-      - name: Verify package archive
-        run: |
-          shopt -s nullglob
-          packages=(dist/*.tgz)
-          if (( ${#packages[@]} != 1 )); then
-            echo "Expected one npm archive in dist/, found ${#packages[@]}" >&2
+          if [ -z "$PROSETTA_WASM_PATH" ]; then
+            echo "Set the PROSETTA_WASM_PATH repository variable in GitHub Actions settings" >&2
             exit 1
           fi
 
-      - name: Upload develop build artifacts
-        if: github.event_name == 'push'
+      - name: Type-check
+        run: mise exec -- just check
+
+      - name: Build production bundle and package
+        run: mise exec -- just build-prod
+
+      - name: Verify package archive
+        run: mise exec -- just verify-package
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: prosetta-sdk-${{ github.sha }}
+          name: prosetta-sdk-${{ github.run_id }}
+          if-no-files-found: error
           path: |
             dist/prosetta-sdk.js
             dist/*.tgz
 
-      - name: Attach bundle and npm tarball to release
-        if: github.event_name == 'release'
+  attach-release-assets:
+    name: Attach release assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.run_id }}
+          path: dist
+
+      - name: Attach bundle and npm archive
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/prosetta-sdk.js dist/*.tgz --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/prosetta-sdk.js dist/*.tgz --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish-npm:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.run_id }}
+          path: dist
 
       - name: Configure npm registry
-        if: github.event_name == 'release' || github.event_name == 'push'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Publish to npm
-        if: github.event_name == 'release' || github.event_name == 'push'
+      - name: Publish npm archive
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PUBLISH_TAG: ${{ github.event_name == 'release' && github.event.release.prerelease && 'next' || github.event_name == 'release' && 'latest' || 'develop' }}
+          PUBLISH_TAG: ${{ github.event.release.prerelease && 'next' || 'latest' }}
         run: npm publish ./dist/*.tgz --access public --tag "$PUBLISH_TAG"
 
+  publish-github-packages:
+    name: Publish to GitHub Packages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.run_id }}
+          path: dist
+
       - name: Configure GitHub Packages registry
-        if: github.event_name == 'release' || github.event_name == 'push'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://npm.pkg.github.com
           scope: '@venkateshcv1809'
 
-      - name: Publish to GitHub Packages
-        if: github.event_name == 'release' || github.event_name == 'push'
+      - name: Publish npm archive
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
-          PUBLISH_TAG: ${{ github.event_name == 'release' && github.event.release.prerelease && 'next' || github.event_name == 'release' && 'latest' || 'develop' }}
+          PUBLISH_TAG: ${{ github.event.release.prerelease && 'next' || 'latest' }}
         run: npm publish ./dist/*.tgz --registry=https://npm.pkg.github.com --tag "$PUBLISH_TAG"

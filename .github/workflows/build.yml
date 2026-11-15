@@ -1,0 +1,77 @@
+name: Build SDK
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Type-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out develop commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Install project tools
+        uses: jdx/mise-action@v4
+        with:
+          version: 2026.11.7
+          cache: false
+
+      - name: Install dependencies
+        run: mise exec -- just install-ci
+
+      - name: Type-check
+        run: mise exec -- just check
+
+  build:
+    name: Build and upload artifacts
+    needs: validate
+    runs-on: ubuntu-latest
+    env:
+      PROSETTA_WASM_PATH: ${{ vars.PROSETTA_WASM_PATH }}
+    steps:
+      - name: Check out develop commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Install project tools
+        uses: jdx/mise-action@v4
+        with:
+          version: 2026.11.7
+          cache: false
+
+      - name: Install dependencies
+        run: mise exec -- just install-ci
+
+      - name: Check WASM path configuration
+        run: |
+          if [ -z "$PROSETTA_WASM_PATH" ]; then
+            echo "Set the PROSETTA_WASM_PATH repository variable in GitHub Actions settings" >&2
+            exit 1
+          fi
+
+      - name: Build production bundle and package
+        run: mise exec -- just build-prod
+
+      - name: Verify package archive
+        run: mise exec -- just verify-package
+
+      - name: Upload develop build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            dist/prosetta-sdk.js
+            dist/*.tgz

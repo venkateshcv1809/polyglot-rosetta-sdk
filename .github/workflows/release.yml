@@ -1,20 +1,22 @@
-name: Publish SDK release
+name: Release SDK
 
 on:
   release:
     types: [published]
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: sdk-release-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  build:
+    name: Validate and build
     runs-on: ubuntu-latest
+    env:
+      PROSETTA_WASM_PATH: ${{ vars.PROSETTA_WASM_PATH }}
     steps:
       - name: Check out release tag
         uses: actions/checkout@v4
@@ -24,7 +26,7 @@ jobs:
 
       - name: Ensure release commit is on main
         run: |
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
             echo "Release tag $GITHUB_REF_NAME must point to a commit in main's history" >&2
             exit 1
           fi
@@ -32,12 +34,8 @@ jobs:
       - name: Install project tools
         uses: jdx/mise-action@v4
         with:
-          version: 2026.10.25
-          install_args: --locked node yarn
+          version: 2026.11.7
           cache: false
-
-      - name: Install dependencies
-        run: mise exec -- yarn install --immutable
 
       - name: Check release tag matches package version
         env:
@@ -50,16 +48,62 @@ jobs:
             exit 1
           fi
 
+      - name: Install dependencies
+        run: mise exec -- just install-ci
+
+      - name: Check WASM path configuration
+        run: |
+          if [ -z "$PROSETTA_WASM_PATH" ]; then
+            echo "Set the PROSETTA_WASM_PATH repository variable in GitHub Actions settings" >&2
+            exit 1
+          fi
+
       - name: Type-check
-        run: mise exec -- yarn check
+        run: mise exec -- just check
 
       - name: Build production bundle and package
-        run: mise exec -- yarn build:prod
+        run: mise exec -- just build-prod
 
-      - name: Attach bundle and npm tarball to release
+      - name: Verify package archive
+        run: mise exec -- just verify-package
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            dist/prosetta-sdk.js
+            dist/*.tgz
+
+  attach-release-assets:
+    name: Attach release assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.run_id }}
+          path: dist
+
+      - name: Attach bundle and npm archive
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/prosetta-sdk.js dist/*.tgz --clobber
+        run: gh release upload "$GITHUB_REF_NAME" dist/prosetta-sdk.js dist/*.tgz --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish-npm:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.run_id }}
+          path: dist
 
       - name: Configure npm registry
         uses: actions/setup-node@v4
@@ -67,11 +111,24 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Publish to npm
+      - name: Publish npm archive
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}
-        run: npm publish dist/*.tgz --access public --tag "$RELEASE_CHANNEL"
+          PUBLISH_TAG: ${{ github.event.release.prerelease && 'next' || 'latest' }}
+        run: npm publish ./dist/*.tgz --access public --tag "$PUBLISH_TAG"
+
+  publish-github-packages:
+    name: Publish to GitHub Packages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prosetta-sdk-${{ github.run_id }}
+          path: dist
 
       - name: Configure GitHub Packages registry
         uses: actions/setup-node@v4
@@ -80,8 +137,8 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@venkateshcv1809'
 
-      - name: Publish to GitHub Packages
+      - name: Publish npm archive
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
-          RELEASE_CHANNEL: ${{ github.event.release.prerelease && 'next' || 'latest' }}
-        run: npm publish dist/*.tgz --registry=https://npm.pkg.github.com --tag "$RELEASE_CHANNEL"
+          PUBLISH_TAG: ${{ github.event.release.prerelease && 'next' || 'latest' }}
+        run: npm publish ./dist/*.tgz --registry=https://npm.pkg.github.com --tag "$PUBLISH_TAG"

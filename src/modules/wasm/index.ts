@@ -5,3 +5,4 @@ export {
   unloadWasm,
   wasmSource,
 } from './loader';
+export { getProsettaCore, requireProsettaCore } from './runtime';

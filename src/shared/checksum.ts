@@ -2,7 +2,7 @@ import { toArrayBuffer } from './bytes';
 import { isRecord, toFiniteNumber } from './json';
 import { getNodeBuiltin, type NodeCrypto } from './node-runtime';
 
-export function parseSha256Sums(contents: string, assetName: string): string {
+export function findSha256Sum(contents: string, assetName: string): string | undefined {
   for (const line of contents.split(/\r?\n/)) {
     const match = line.match(/^([a-f\d]{64})\s+\*?(.+)$/i);
 
@@ -11,7 +11,17 @@ export function parseSha256Sums(contents: string, assetName: string): string {
     }
   }
 
-  throw new Error(`SHA256SUMS does not contain a SHA-256 checksum for ${assetName}.`);
+  return undefined;
+}
+
+export function parseSha256Sums(contents: string, assetName: string): string {
+  const checksum = findSha256Sum(contents, assetName);
+
+  if (!checksum) {
+    throw new Error(`SHA256SUMS does not contain a SHA-256 checksum for ${assetName}.`);
+  }
+
+  return checksum;
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {

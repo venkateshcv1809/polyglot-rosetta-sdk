@@ -3,6 +3,7 @@ import { PROSETTA_CATALOG_URL_ENV, PROSETTA_WASM_PATH_ENV } from './config.mts';
 export { PROSETTA_CATALOG_URL_ENV, PROSETTA_WASM_PATH_ENV };
 export const PROSETTA_WASM_VERSION = 'v0.9.1';
 export const PROSETTA_WASM_FILE_NAME = 'prosetta.wasm';
+export const PROSETTA_WASM_EXEC_FILE_NAME = 'wasm_exec.js';
 export const PROSETTA_WASM_CHECKSUMS_FILE_NAME = 'SHA256SUMS';
 
 export const PROSETTA_CATALOG_MANIFEST_FILE_NAME = 'manifest.json';

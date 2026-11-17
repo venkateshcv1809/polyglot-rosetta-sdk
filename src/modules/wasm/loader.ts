@@ -1,8 +1,8 @@
-import { getConfig } from '../config/index';
+import { getConfig } from '../../config/index';
 import {
   NODE_WASM_LOADER_REQUIRED_ERROR,
   WASM_PATH_REQUIRED_ERROR,
-} from '../config/constants';
+} from '../../config/constants';
 
 type NodeRuntime = {
   getBuiltinModule?: (name: string) => unknown;

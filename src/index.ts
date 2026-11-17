@@ -1,4 +1,4 @@
-import { loadWasm, unloadWasm } from './wasm/index';
+import { loadWasm, unloadWasm } from './modules/wasm/index';
 
 export function init(): Promise<WebAssembly.Module> {
   return loadWasm();

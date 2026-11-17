@@ -1,4 +1,4 @@
-import { PROSETTA_WASM_PATH_ENV } from './constants';
+export const PROSETTA_WASM_PATH_ENV = 'PROSETTA_WASM_PATH';
 
 type NodeRuntime = {
   env: Record<string, string | undefined>;

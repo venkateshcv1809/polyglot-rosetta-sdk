@@ -1,4 +1,6 @@
-export const PROSETTA_WASM_PATH_ENV = 'PROSETTA_WASM_PATH';
+import { PROSETTA_WASM_PATH_ENV } from './config.mts';
+
+export { PROSETTA_WASM_PATH_ENV };
 export const PROSETTA_WASM_VERSION = 'v0.9.1';
 export const PROSETTA_WASM_FILE_NAME = 'prosetta.wasm';
 export const PROSETTA_WASM_CHECKSUMS_FILE_NAME = 'SHA256SUMS';

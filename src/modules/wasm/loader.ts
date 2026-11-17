@@ -1,19 +1,17 @@
 import { getConfig } from '../../config/index';
 import { toArrayBuffer } from '../../shared/bytes';
-import {
-  NODE_WASM_LOADER_REQUIRED_ERROR,
-  WASM_PATH_REQUIRED_ERROR,
-} from '../../config/constants';
-import { isHttpUrl } from '../../shared/url';
-import { loadWasmBytes } from './assets';
-
-type NodeRuntime = {
-  getBuiltinModule?: (name: string) => unknown;
-};
+import { PROSETTA_WASM_FILE_NAME, WASM_PATH_REQUIRED_ERROR } from '../../config/constants';
+import { getRegistryFile, loadRegistry } from '../../platform/registry';
+import { requireSource } from '../../shared/source';
+import { downloadWasmAsset, fetchWasmChecksum, loadCachedWasm } from './assets';
 
 let cachedModule: WebAssembly.Module | undefined;
 let pendingLoad: Promise<WebAssembly.Module> | undefined;
 let loadGeneration = 0;
+
+export function wasmSource(): string {
+  return requireSource(getConfig().PROSETTA_WASM_PATH, WASM_PATH_REQUIRED_ERROR);
+}
 
 export function loadWasm(): Promise<WebAssembly.Module> {
   if (cachedModule) {
@@ -25,7 +23,7 @@ export function loadWasm(): Promise<WebAssembly.Module> {
   }
 
   const generation = loadGeneration;
-  const load = compileWasm();
+  const load = compileInstalledWasm();
   pendingLoad = load;
 
   return load.then(
@@ -48,21 +46,25 @@ export function unloadWasm(): void {
   pendingLoad = undefined;
 }
 
-async function compileWasm(): Promise<WebAssembly.Module> {
-  const { PROSETTA_WASM_PATH: wasmPath } = getConfig();
-
-  if (!wasmPath) {
-    throw new Error(WASM_PATH_REQUIRED_ERROR);
-  }
-
-  if (!isHttpUrl(wasmPath) && !hasNodeFileSystem()) {
-    throw new Error(NODE_WASM_LOADER_REQUIRED_ERROR);
-  }
-
-  return WebAssembly.compile(toArrayBuffer(await loadWasmBytes(wasmPath)));
+export async function inspectWasmChecksum(): Promise<string | undefined> {
+  return fetchWasmChecksum(wasmSource());
 }
 
-function hasNodeFileSystem(): boolean {
-  const nodeProcess = (globalThis as typeof globalThis & { process?: NodeRuntime }).process;
-  return Boolean(nodeProcess?.getBuiltinModule?.('fs'));
+export async function installWasm(expectedChecksum?: string): Promise<string> {
+  const { sha256 } = await downloadWasmAsset(wasmSource(), expectedChecksum);
+  return sha256;
+}
+
+async function compileInstalledWasm(): Promise<WebAssembly.Module> {
+  const registry = await loadRegistry();
+  const file = getRegistryFile(registry, 'wasm', PROSETTA_WASM_FILE_NAME);
+  const bytes = file?.status === 'downloaded' && file.sha256
+    ? await loadCachedWasm(file.sha256)
+    : undefined;
+
+  if (!bytes) {
+    throw new Error('WASM is not installed in the SDK cache. Call init() or update() first.');
+  }
+
+  return WebAssembly.compile(toArrayBuffer(bytes));
 }

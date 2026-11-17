@@ -5,7 +5,12 @@ import {
 } from './config/constants';
 import { activateCatalog, inspectCatalog, installCatalog, unloadCatalog, updateCatalog, type CatalogInspection } from './modules/catalog/index';
 import { loadWasm, inspectWasmChecksum, installWasm, unloadWasm, wasmSource } from './modules/wasm/index';
-import { bindHost } from './platform/host';
+import { bindHost, setExecutionCallbacks, setTypescriptReady } from './platform/host';
+import {
+  buildTypeScriptProgram,
+  disposeTypeScriptProgram,
+  runTypeScriptProgram,
+} from './platform/host/typescript/index';
 import { type ProsettaCoreApi } from './platform/host/types';
 import {
   getRegistryFile,
@@ -106,6 +111,12 @@ export async function shutdown(): Promise<void> {
 
 async function startBoundCore(updates: UpdateFlags): Promise<InitResult> {
   const core = await loadWasm();
+  setTypescriptReady(true);
+  setExecutionCallbacks({
+    buildProgram: buildTypeScriptProgram,
+    runCase: runTypeScriptProgram,
+    disposeProgram: disposeTypeScriptProgram,
+  });
   bindHost(core);
   await activateCatalog(core);
   return { core, updates: { ...updates } };

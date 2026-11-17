@@ -1,4 +1,5 @@
 export const PROSETTA_WASM_PATH_ENV = 'PROSETTA_WASM_PATH';
+export const PROSETTA_CATALOG_URL_ENV = 'PROSETTA_CATALOG_URL';
 
 type NodeRuntime = {
   env: Record<string, string | undefined>;
@@ -6,6 +7,7 @@ type NodeRuntime = {
 
 const DEFAULT_CONFIG = {
   [PROSETTA_WASM_PATH_ENV]: undefined as string | undefined,
+  [PROSETTA_CATALOG_URL_ENV]: undefined as string | undefined,
 };
 
 export type SDKConfig = typeof DEFAULT_CONFIG;

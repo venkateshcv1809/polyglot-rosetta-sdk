@@ -1,15 +1,14 @@
 import { getConfig } from '../../config/index';
+import { toArrayBuffer } from '../../shared/bytes';
 import {
   NODE_WASM_LOADER_REQUIRED_ERROR,
   WASM_PATH_REQUIRED_ERROR,
 } from '../../config/constants';
+import { isHttpUrl } from '../../shared/url';
+import { loadWasmBytes } from './assets';
 
 type NodeRuntime = {
   getBuiltinModule?: (name: string) => unknown;
-};
-
-type FileSystemPromises = {
-  readFile(path: string): Promise<Uint8Array>;
 };
 
 let cachedModule: WebAssembly.Module | undefined;
@@ -56,32 +55,14 @@ async function compileWasm(): Promise<WebAssembly.Module> {
     throw new Error(WASM_PATH_REQUIRED_ERROR);
   }
 
-  if (isHttpUrl(wasmPath)) {
-    const response = await fetch(wasmPath);
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to download WASM from ${wasmPath}: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    return WebAssembly.compile(await response.arrayBuffer());
-  }
-
-  const nodeProcess = (globalThis as typeof globalThis & { process?: NodeRuntime }).process;
-
-  const fs = nodeProcess?.getBuiltinModule?.('fs') as
-    | { promises: FileSystemPromises }
-    | undefined;
-
-  if (!fs) {
+  if (!isHttpUrl(wasmPath) && !hasNodeFileSystem()) {
     throw new Error(NODE_WASM_LOADER_REQUIRED_ERROR);
   }
 
-  const wasmBytes = await fs.promises.readFile(wasmPath);
-  return WebAssembly.compile(wasmBytes as BufferSource);
+  return WebAssembly.compile(toArrayBuffer(await loadWasmBytes(wasmPath)));
 }
 
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
+function hasNodeFileSystem(): boolean {
+  const nodeProcess = (globalThis as typeof globalThis & { process?: NodeRuntime }).process;
+  return Boolean(nodeProcess?.getBuiltinModule?.('fs'));
 }

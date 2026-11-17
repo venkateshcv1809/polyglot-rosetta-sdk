@@ -158,6 +158,24 @@ export async function getCatalog(): Promise<CatalogBundle | undefined> {
   };
 }
 
+export async function activateCatalog(core: {
+  catalog(...args: unknown[]): { status?: string; error?: string };
+}): Promise<{ status?: string; error?: string }> {
+  const bundle = await getCatalog();
+
+  if (!bundle) {
+    throw new Error('Catalog is not installed in the SDK cache. Call init() or update() first.');
+  }
+
+  const activated = core.catalog(bundle.index, bundle.templates, bundle.archives);
+
+  if (activated?.status && activated.status !== 'ok') {
+    throw new Error(activated.error || 'ProsettaCore.catalog failed.');
+  }
+
+  return activated;
+}
+
 export function unloadCatalog(): void {}
 
 function markDownloaded(registry: SDKRegistry, asset: CatalogAsset): void {

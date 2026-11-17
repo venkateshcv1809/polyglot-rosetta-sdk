@@ -1,7 +1,12 @@
 import {
+  PROSETTA_WASM_EXEC_FILE_NAME,
   PROSETTA_WASM_FILE_NAME,
   PROSETTA_WASM_VERSION,
 } from './config/constants';
+import { activateCatalog, inspectCatalog, installCatalog, unloadCatalog, updateCatalog, type CatalogInspection } from './modules/catalog/index';
+import { loadWasm, inspectWasmChecksum, installWasm, unloadWasm, wasmSource } from './modules/wasm/index';
+import { bindHost } from './platform/host';
+import { type ProsettaCoreApi } from './platform/host/types';
 import {
   getRegistryFile,
   loadRegistry,
@@ -10,14 +15,6 @@ import {
   unloadRegistry,
   type SDKRegistry,
 } from './platform/registry';
-import {
-  inspectCatalog,
-  installCatalog,
-  unloadCatalog,
-  updateCatalog,
-  type CatalogInspection,
-} from './modules/catalog/index';
-import { inspectWasmChecksum, installWasm, loadWasm, unloadWasm, wasmSource } from './modules/wasm/index';
 
 export type UpdateFlags = {
   core: boolean;
@@ -25,7 +22,7 @@ export type UpdateFlags = {
 };
 
 export type InitResult = {
-  wasm: WebAssembly.Module;
+  core: ProsettaCoreApi;
   updates: UpdateFlags;
 };
 
@@ -45,11 +42,12 @@ export async function init(): Promise<InitResult> {
     catalogAssets: catalogInspection.assets,
   };
 
-  const installedWasm = getRegistryFile(registry, 'wasm', PROSETTA_WASM_FILE_NAME);
-  const hasCore = installedWasm?.status === 'downloaded' && Boolean(installedWasm.sha256);
+  const hasCore = isCoreInstalled(registry);
   const hasCatalog = Boolean(registry.catalog.manifestSha256);
+  const installedWasm = getRegistryFile(registry, 'wasm', PROSETTA_WASM_FILE_NAME);
 
-  registry.updates.core = hasCore && Boolean(latestWasmSha256) && installedWasm.sha256 !== latestWasmSha256;
+  registry.updates.core =
+    hasCore && Boolean(latestWasmSha256) && installedWasm?.sha256 !== latestWasmSha256;
   registry.updates.catalog = hasCatalog && registry.catalog.manifestSha256 !== catalogInspection.manifestSha256;
 
   if (!hasCore) {
@@ -65,7 +63,7 @@ export async function init(): Promise<InitResult> {
   }
 
   await saveRegistry(registry);
-  return { wasm: await loadWasm(), updates: { ...registry.updates } };
+  return startBoundCore(registry.updates);
 }
 
 export async function update(): Promise<InitResult> {
@@ -90,7 +88,7 @@ export async function update(): Promise<InitResult> {
 
   await saveRegistry(registry);
   unloadWasm();
-  return { wasm: await loadWasm(), updates: { ...registry.updates } };
+  return startBoundCore(registry.updates);
 }
 
 export async function hasUpdates(): Promise<UpdateFlags> {
@@ -106,15 +104,34 @@ export async function shutdown(): Promise<void> {
   unloadRegistry();
 }
 
+async function startBoundCore(updates: UpdateFlags): Promise<InitResult> {
+  const core = await loadWasm();
+  bindHost(core);
+  await activateCatalog(core);
+  return { core, updates: { ...updates } };
+}
+
+function isCoreInstalled(registry: SDKRegistry): boolean {
+  const wasm = getRegistryFile(registry, 'wasm', PROSETTA_WASM_FILE_NAME);
+  const wasmExec = getRegistryFile(registry, 'wasm', PROSETTA_WASM_EXEC_FILE_NAME);
+  return wasm?.status === 'downloaded' && Boolean(wasm.sha256) && wasmExec?.status === 'downloaded' && Boolean(wasmExec.sha256);
+}
+
 async function installCore(registry: SDKRegistry, expectedChecksum?: string): Promise<void> {
-  const sha256 = await installWasm(expectedChecksum);
+  const installed = await installWasm(expectedChecksum);
   registry.source.wasm = wasmSource();
   registry.engine.version = PROSETTA_WASM_VERSION;
   registry.execution.mode = 'wasm';
   setRegistryFile(registry, {
     kind: 'wasm',
     path: PROSETTA_WASM_FILE_NAME,
-    sha256,
+    sha256: installed.wasmSha256,
+    status: 'downloaded',
+  });
+  setRegistryFile(registry, {
+    kind: 'wasm',
+    path: PROSETTA_WASM_EXEC_FILE_NAME,
+    sha256: installed.wasmExecSha256,
     status: 'downloaded',
   });
 }

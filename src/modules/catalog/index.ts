@@ -1,4 +1,5 @@
 export {
+  activateCatalog,
   getCatalog,
   inspectCatalog,
   installCatalog,

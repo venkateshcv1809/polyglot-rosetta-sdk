@@ -1,15 +1,33 @@
-import { getBrowserCacheEntry, setBrowserCacheEntry } from './browser';
-import { canUseNodeCache, getNodeCacheEntry, setNodeCacheEntry } from './node';
+import { type KeyValueCache, type LoadThroughCacheOptions } from './types';
 
-export async function getCacheEntry(key: string): Promise<Uint8Array | undefined> {
-  return canUseNodeCache() ? getNodeCacheEntry(key) : getBrowserCacheEntry(key);
+export type { KeyValueCache, LoadThroughCacheOptions } from './types';
+export { createCacheApiStore } from './cache-api';
+export { createIndexedDbStore } from './indexed-db';
+export { createNodeFileCache } from './node-file';
+
+export function createLazyCache(create: () => KeyValueCache): () => KeyValueCache {
+  let cache: KeyValueCache | undefined;
+  return () => {
+    cache ??= create();
+    return cache;
+  };
 }
 
-export async function setCacheEntry(key: string, bytes: Uint8Array): Promise<void> {
-  if (canUseNodeCache()) {
-    await setNodeCacheEntry(key, bytes);
-    return;
+export async function loadThroughCache(
+  cache: KeyValueCache,
+  options: LoadThroughCacheOptions,
+): Promise<Uint8Array> {
+  const cachedBytes = await cache.get(options.cacheKey);
+
+  if (cachedBytes && (!options.matches || (await options.matches(cachedBytes)))) {
+    return cachedBytes;
   }
 
-  await setBrowserCacheEntry(key, bytes);
+  const bytes = await options.download();
+
+  if (options.persist !== false) {
+    await cache.set(options.cacheKey, bytes);
+  }
+
+  return bytes;
 }

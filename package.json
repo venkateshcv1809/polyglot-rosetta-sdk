@@ -1,6 +1,6 @@
 {
   "name": "@venkateshcv1809/prosetta-sdk",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "description": "JavaScript SDK wrapper for the Polyglot Rosetta WebAssembly runtime.",
   "license": "MIT",
   "repository": {
@@ -43,6 +43,9 @@
     "build:prod": "mise exec -- yarn clean && mise exec -- tsdown --config tsdown.prod.config.mts && npm pack --cache ./.cache/npm --pack-destination dist && node -e \"require('node:fs').rmSync('dist/npm', { recursive: true, force: true })\"",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "check": "tsc --noEmit --project tsconfig.json"
+  },
+  "dependencies": {
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "tsdown": "^0.23.5",

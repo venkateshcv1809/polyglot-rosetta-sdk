@@ -1,68 +1,87 @@
 import { getConfig } from '../../config/index';
-import { toArrayBuffer } from '../../shared/bytes';
 import {
-  NODE_WASM_LOADER_REQUIRED_ERROR,
+  PROSETTA_WASM_EXEC_FILE_NAME,
+  PROSETTA_WASM_FILE_NAME,
   WASM_PATH_REQUIRED_ERROR,
 } from '../../config/constants';
-import { isHttpUrl } from '../../shared/url';
-import { loadWasmBytes } from './assets';
+import { getRegistryFile, loadRegistry } from '../../platform/registry';
+import { type ProsettaCoreApi } from '../../platform/host/types';
+import { requireSource } from '../../shared/source';
+import {
+  downloadWasmAsset,
+  fetchReleaseChecksums,
+  fetchWasmChecksum,
+  loadCachedWasm,
+} from './assets';
+import { getProsettaCore, startProsettaCore } from './runtime';
 
-type NodeRuntime = {
-  getBuiltinModule?: (name: string) => unknown;
-};
+let pendingStart: Promise<ProsettaCoreApi> | undefined;
+let startGeneration = 0;
 
-let cachedModule: WebAssembly.Module | undefined;
-let pendingLoad: Promise<WebAssembly.Module> | undefined;
-let loadGeneration = 0;
+export function wasmSource(): string {
+  return requireSource(getConfig().PROSETTA_WASM_PATH, WASM_PATH_REQUIRED_ERROR);
+}
 
-export function loadWasm(): Promise<WebAssembly.Module> {
-  if (cachedModule) {
-    return Promise.resolve(cachedModule);
+export function loadWasm(): Promise<ProsettaCoreApi> {
+  const started = getProsettaCore();
+
+  if (started) {
+    return Promise.resolve(started);
   }
 
-  if (pendingLoad) {
-    return pendingLoad;
+  if (pendingStart) {
+    return pendingStart;
   }
 
-  const generation = loadGeneration;
-  const load = compileWasm();
-  pendingLoad = load;
-
-  return load.then(
-    (module) => {
-      if (generation === loadGeneration) {
-        cachedModule = module;
-      }
-      return module;
-    },
-  ).finally(() => {
-    if (generation === loadGeneration) {
-      pendingLoad = undefined;
+  const generation = startGeneration;
+  pendingStart = startInstalledCore().finally(() => {
+    if (generation === startGeneration) {
+      pendingStart = undefined;
     }
   });
+  return pendingStart;
 }
 
 export function unloadWasm(): void {
-  loadGeneration += 1;
-  cachedModule = undefined;
-  pendingLoad = undefined;
+  startGeneration += 1;
+  pendingStart = undefined;
 }
 
-async function compileWasm(): Promise<WebAssembly.Module> {
-  const { PROSETTA_WASM_PATH: wasmPath } = getConfig();
-
-  if (!wasmPath) {
-    throw new Error(WASM_PATH_REQUIRED_ERROR);
-  }
-
-  if (!isHttpUrl(wasmPath) && !hasNodeFileSystem()) {
-    throw new Error(NODE_WASM_LOADER_REQUIRED_ERROR);
-  }
-
-  return WebAssembly.compile(toArrayBuffer(await loadWasmBytes(wasmPath)));
+export async function inspectWasmChecksum(): Promise<string | undefined> {
+  return fetchWasmChecksum(wasmSource());
 }
 
-function hasNodeFileSystem(): boolean {
-  const nodeProcess = (globalThis as typeof globalThis & { process?: NodeRuntime }).process;
-  return Boolean(nodeProcess?.getBuiltinModule?.('fs'));
+export async function installWasm(expectedWasmChecksum?: string): Promise<{
+  wasmSha256: string;
+  wasmExecSha256: string;
+}> {
+  const source = wasmSource();
+  const checksums = await fetchReleaseChecksums(source);
+  const wasm = await downloadWasmAsset(source, PROSETTA_WASM_FILE_NAME, expectedWasmChecksum ?? checksums.wasm);
+  const wasmExec = await downloadWasmAsset(
+    source,
+    PROSETTA_WASM_EXEC_FILE_NAME,
+    checksums.wasmExec,
+  );
+  return { wasmSha256: wasm.sha256, wasmExecSha256: wasmExec.sha256 };
+}
+
+async function startInstalledCore(): Promise<ProsettaCoreApi> {
+  const registry = await loadRegistry();
+  const wasmFile = getRegistryFile(registry, 'wasm', PROSETTA_WASM_FILE_NAME);
+  const execFile = getRegistryFile(registry, 'wasm', PROSETTA_WASM_EXEC_FILE_NAME);
+  const wasmBytes =
+    wasmFile?.status === 'downloaded' && wasmFile.sha256
+      ? await loadCachedWasm(wasmFile.sha256)
+      : undefined;
+  const execBytes =
+    execFile?.status === 'downloaded' && execFile.sha256
+      ? await loadCachedWasm(execFile.sha256)
+      : undefined;
+
+  if (!wasmBytes || !execBytes) {
+    throw new Error('WASM is not installed in the SDK cache. Call init() or update() first.');
+  }
+
+  return startProsettaCore(wasmBytes, new TextDecoder().decode(execBytes));
 }

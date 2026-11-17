@@ -1,67 +1,26 @@
 import {
   PROSETTA_WASM_CHECKSUMS_FILE_NAME,
+  PROSETTA_WASM_EXEC_FILE_NAME,
   PROSETTA_WASM_FILE_NAME,
   PROSETTA_WASM_VERSION,
 } from '../../config/constants';
-import { getCacheEntry, setCacheEntry } from '../../platform/cache';
-import { parseSha256Sums, sha256Hex, verifySha256 } from '../../shared/checksum';
-import { readFileFromDirectory } from '../../shared/filesystem';
+import { blobCacheKey, getBlobCacheStore } from '../../platform/blob-cache';
+import { findSha256Sum, sha256Hex, verifySha256 } from '../../shared/checksum';
 import { fetchResource } from '../../shared/http';
+import { readSourceFile } from '../../shared/source';
 import { isHttpUrl, joinUrl } from '../../shared/url';
 
-export async function loadWasmBytes(sourceDirectory: string): Promise<Uint8Array> {
-  if (!isHttpUrl(sourceDirectory)) {
-    return readFileFromDirectory(sourceDirectory, PROSETTA_WASM_FILE_NAME);
+export type ReleaseChecksums = {
+  wasm?: string;
+  wasmExec?: string;
+};
+
+export function resolveWasmDirectory(source: string): string {
+  if (!isHttpUrl(source)) {
+    return source;
   }
 
-  const releaseDirectory = resolveWasmReleaseDirectory(sourceDirectory);
-  const wasmUrl = joinUrl(releaseDirectory, PROSETTA_WASM_FILE_NAME);
-  const checksumsUrl = joinUrl(releaseDirectory, PROSETTA_WASM_CHECKSUMS_FILE_NAME);
-
-  const cachedBytes = await getCacheEntry(wasmUrl);
-  const expectedChecksum = await downloadLatestChecksum(checksumsUrl);
-
-  if (expectedChecksum && cachedBytes && (await sha256Hex(cachedBytes)) === expectedChecksum) {
-    return cachedBytes;
-  }
-
-  const bytes = await downloadWasm(wasmUrl, expectedChecksum);
-
-  if (expectedChecksum) {
-    await setCacheEntry(wasmUrl, bytes);
-  }
-
-  return bytes;
-}
-
-async function downloadLatestChecksum(checksumsUrl: string): Promise<string | undefined> {
-  const checksumsResponse = await fetchResource(checksumsUrl, PROSETTA_WASM_CHECKSUMS_FILE_NAME, {
-    cache: 'no-store',
-    allowNotFound: true,
-  });
-
-  if (checksumsResponse.status === 404) {
-    return undefined;
-  }
-
-  return parseSha256Sums(await checksumsResponse.text(), PROSETTA_WASM_FILE_NAME);
-}
-
-async function downloadWasm(wasmUrl: string, expectedChecksum: string | undefined): Promise<Uint8Array> {
-  const wasmResponse = await fetchResource(wasmUrl, PROSETTA_WASM_FILE_NAME, {
-    cache: 'no-store',
-  });
-  const bytes = new Uint8Array(await wasmResponse.arrayBuffer());
-
-  if (expectedChecksum) {
-    await verifySha256(bytes, expectedChecksum, wasmUrl);
-  }
-
-  return bytes;
-}
-
-function resolveWasmReleaseDirectory(releaseRoot: string): string {
-  const url = new URL(releaseRoot);
+  const url = new URL(source);
   const normalizedPath = url.pathname.replace(/\/+$/, '');
   const lastSegment = normalizedPath.slice(normalizedPath.lastIndexOf('/') + 1);
 
@@ -83,4 +42,70 @@ function resolveWasmReleaseDirectory(releaseRoot: string): string {
 
   url.pathname = `${normalizedPath}/`;
   return url.toString();
+}
+
+export async function fetchReleaseChecksums(source: string): Promise<ReleaseChecksums> {
+  const text = await loadChecksumsText(source);
+
+  if (!text) {
+    return {};
+  }
+
+  return {
+    wasm: findSha256Sum(text, PROSETTA_WASM_FILE_NAME),
+    wasmExec: findSha256Sum(text, PROSETTA_WASM_EXEC_FILE_NAME),
+  };
+}
+
+export async function fetchWasmChecksum(source: string): Promise<string | undefined> {
+  return (await fetchReleaseChecksums(source)).wasm;
+}
+
+export async function loadCachedWasm(sha256: string): Promise<Uint8Array | undefined> {
+  return getBlobCacheStore().get(blobCacheKey('wasm', sha256));
+}
+
+export async function downloadWasmAsset(
+  source: string,
+  fileName: string,
+  expectedChecksum?: string,
+): Promise<{ bytes: Uint8Array; sha256: string }> {
+  const directory = resolveWasmDirectory(source);
+  const bytes = await readSourceFile(directory, fileName);
+  const sha256 = expectedChecksum ?? (await sha256Hex(bytes));
+
+  if (expectedChecksum) {
+    await verifySha256(
+      bytes,
+      expectedChecksum,
+      isHttpUrl(directory) ? joinUrl(directory, fileName) : fileName,
+    );
+  }
+
+  await getBlobCacheStore().set(blobCacheKey('wasm', sha256), bytes);
+  return { bytes, sha256 };
+}
+
+async function loadChecksumsText(source: string): Promise<string | undefined> {
+  const directory = resolveWasmDirectory(source);
+
+  if (!isHttpUrl(directory)) {
+    try {
+      return new TextDecoder().decode(await readSourceFile(directory, PROSETTA_WASM_CHECKSUMS_FILE_NAME));
+    } catch {
+      return undefined;
+    }
+  }
+
+  const checksumsUrl = joinUrl(directory, PROSETTA_WASM_CHECKSUMS_FILE_NAME);
+  const checksumsResponse = await fetchResource(checksumsUrl, PROSETTA_WASM_CHECKSUMS_FILE_NAME, {
+    cache: 'no-store',
+    allowNotFound: true,
+  });
+
+  if (checksumsResponse.status === 404) {
+    return undefined;
+  }
+
+  return checksumsResponse.text();
 }
